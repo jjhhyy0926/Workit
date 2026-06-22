@@ -20,14 +20,16 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 from FlagEmbedding import BGEM3FlagModel
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    NamedSparseVector,
+    Fusion,
+    FusionQuery,
     Prefetch,
+    SparseVector,
 )
 
 # ──────────────────────────────────────────
@@ -48,6 +50,9 @@ EMBED_MODEL = "BAAI/bge-m3"
 # TOP_K: 조항 하나가 여러 리스크 카테고리에 걸칠 수 있으므로 넉넉하게 설정
 # 추후 실험 기반으로 조정 필요
 TOP_K = 10
+
+# FETCH_K: RRF 품질을 높이기 위해 각 검색 소스(dense/sparse)에서
+# TOP_K보다 넉넉하게 가져온 후 fusion — 최종 반환은 TOP_K개
 FETCH_K = 20
 
 # MIN_SCORE: RRF 점수는 dense cosine similarity와 스케일이 다르므로
@@ -76,6 +81,8 @@ class ClauseResult:
     """계약서 조항 1건의 검색 결과"""
     clause_number : str
     clause_text   : str
+    page          : int = 0
+    bbox          : dict | None = None
     law_refs      : list[LawRef] = field(default_factory=list)
     categories    : list[str]   = field(default_factory=list)
 
@@ -106,7 +113,6 @@ def load_model(model_name: str = EMBED_MODEL) -> BGEM3FlagModel:
 def get_vectors(text: str, model: BGEM3FlagModel) -> tuple[list[float], dict[int, float]]:
     """
     BGE-M3로 Dense + Sparse(SPLADE) 벡터를 동시 추출.
-    KURE-v1의 토크나이저 TF 근사 대신 모델 자체 lexical weights 사용.
 
     Returns:
         dense_vector  : list[float] (1024차원)
@@ -120,14 +126,14 @@ def get_vectors(text: str, model: BGEM3FlagModel) -> tuple[list[float], dict[int
     )
 
     dense_vector    = output["dense_vecs"][0].tolist()
-    lexical_weights = output["lexical_weights"][0]  # {token_str: weight}
+    lexical_weights = output["lexical_weights"][0]
 
-    # token_str → token_id 변환
+    # token_str → token_id 변환 + 중복 합산 (upsert와 동일 방식)
     sparse_vector: dict[int, float] = {}
     for token_str, weight in lexical_weights.items():
         token_id = model.tokenizer.convert_tokens_to_ids(token_str)
         if isinstance(token_id, int):
-            sparse_vector[token_id] = float(weight)
+            sparse_vector[token_id] = sparse_vector.get(token_id, 0.0) + float(weight)
 
     return dense_vector, sparse_vector
 
@@ -165,17 +171,14 @@ def chunk_contract(text: str) -> list[dict]:
             i += 2
             continue
 
-        # 항 분리 시도 (①②③ 원문자 기준)
         hang_splits = re.split(r"([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮])", body)
 
         if len(hang_splits) <= 1:
-            # 항 없음 → 조 단위 청크
             clauses.append({
                 "clause_number": clause_number,
                 "clause_text":   f"{raw_header} {body}".strip(),
             })
         else:
-            # 항 있음 → 항 단위 청크
             j = 1
             while j < len(hang_splits) - 1:
                 hang_char = hang_splits[j]
@@ -191,7 +194,6 @@ def chunk_contract(text: str) -> list[dict]:
         i += 2
 
     if not clauses:
-        # fallback: 단락 단위
         paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
         clauses = [
             {"clause_number": f"단락{i + 1}", "clause_text": para}
@@ -221,17 +223,18 @@ def search_law_for_clause(
         response = client.query_points(
             collection_name=COLLECTION,
             prefetch=[
-                Prefetch(query=dense_vector,                                      using="dense",  limit=FETCH_K),
-                Prefetch(query=NamedSparseVector(indices=indices, values=values), using="sparse", limit=FETCH_K),
+                Prefetch(query=dense_vector,                                 limit=FETCH_K, using="dense"),
+                Prefetch(query=SparseVector(indices=indices, values=values), limit=FETCH_K, using="sparse"),
             ],
-            query="rrf",
+            query=FusionQuery(fusion=Fusion.RRF),
             limit=top_k,
         )
     except Exception:
-        # sparse 컬렉션 미구성 환경 폴백 — dense 단독, threshold 없이 top_k만 사용
+        # sparse 미구성 환경 폴백 — dense 단독
         response = client.query_points(
             collection_name=COLLECTION,
             query=dense_vector,
+            using="dense",
             limit=top_k,
         )
 
@@ -261,12 +264,16 @@ def review_contract(
     contract_text : str,
     client        : QdrantClient,
     model         : BGEM3FlagModel,
-    laws_ref      : dict[str, dict],
+    laws_ref      : dict[str, dict] | None = None,
     top_k         : int = TOP_K,
 ) -> list[ClauseResult]:
     """
     계약서 전체 텍스트 → 조항/항별 관련 법령 검색 결과 반환.
+    laws_ref를 안 넘기면 LAWS_REF_PATH에서 자동 로드.
     """
+    if laws_ref is None:
+        laws_ref = load_laws_ref()
+
     clauses = chunk_contract(contract_text)
     results : list[ClauseResult] = []
 
@@ -296,3 +303,14 @@ def review_contract(
 
     print("\n  ✅ 검색 완료")
     return results
+
+
+# ──────────────────────────────────────────
+# 8. JSON 변환 (tasks.py에서 사용)
+# ──────────────────────────────────────────
+def results_to_json(results: list[ClauseResult]) -> list[dict]:
+    """
+    ClauseResult 리스트를 dict 리스트로 변환.
+    sLLM(jihye_inference.predict) 및 좌표 병합(tasks.py)에서 사용.
+    """
+    return [asdict(result) for result in results]
