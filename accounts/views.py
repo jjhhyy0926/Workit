@@ -59,8 +59,11 @@ def _check_single_session_conflict(request, user):
     if not existing_session_key or existing_session_key == request.session.session_key:
         return False
 
-    if not Session.objects.filter(session_key=existing_session_key).exists():
-        # 이미 끊긴 세션이면 정리하고 충돌 아님으로 처리
+    # 세션 행이 DB에 남아있어도 expire_date가 지났으면 이미 끊긴 세션이다 —
+    # 로그아웃 없이 브라우저를 닫은 경우 만료된 세션 행이 그대로 남아있어서,
+    # exists()만 보면 매번 "다른 세션에서 로그인 중"으로 오판하게 된다.
+    if not Session.objects.filter(session_key=existing_session_key, expire_date__gt=timezone.now()).exists():
+        # 이미 끊겼거나 만료된 세션이면 정리하고 충돌 아님으로 처리
         user.current_session_key = None
         user.save(update_fields=["current_session_key"])
         return False
