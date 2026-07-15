@@ -95,6 +95,8 @@ def contract_detail_api(request, pk):
             'filename': doc.filename(),
             'review_status': doc.review_status,
             'url': doc.file.url,
+            # 파일 변경 시 프론트에서 "기존 AI 분석 결과가 삭제됩니다" 경고를 띄울지 판단하는 데 씀
+            'has_analysis': hasattr(doc, 'review_result'),
         })
     return JsonResponse({
         'id': contract.id,

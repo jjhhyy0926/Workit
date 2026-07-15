@@ -340,6 +340,23 @@ def compare_rfp_execution_plan_task(self, performance_id: int):
                 f'충족={comparison_json.get("satisfied_count")} 검토={comparison_json.get("partial_count")} '
                 f'불가={comparison_json.get("unsatisfied_count")}'
             )
+
+        # 화면을 나가 있어도 분석은 celery worker에서 계속 진행되므로, 완료 시점에
+        # 알림을 띄워 사용자가 다시 들어와서 결과를 확인할 수 있게 한다.
+        try:
+            from performance.models import Notification
+
+            owner = contract.created_by
+            if owner.notification_enabled:
+                Notification.objects.create(
+                    user=owner,
+                    message=f'대응 비교 분석이 완료되었습니다: {contract.project_name} 사업수행계획서',
+                    url=f'/performance/deliverable/{execution_plan.id}/analyze/',
+                )
+        except Exception:
+            import traceback
+            print(f'[compare_rfp_execution_plan_task] 완료 알림 생성 실패 (performance_id={performance_id}):\n{traceback.format_exc()}')
+
         return {'status': 'ok', 'performance_id': performance_id}
 
     except Exception as exc:
@@ -556,6 +573,23 @@ def compare_pep_final_report_task(self, performance_id: int):
                 f'충족={comparison_json.get("satisfied_count")} 검토={comparison_json.get("partial_count")} '
                 f'불가={comparison_json.get("unsatisfied_count")}'
             )
+
+        # 화면을 나가 있어도 분석은 celery worker에서 계속 진행되므로, 완료 시점에
+        # 알림을 띄워 사용자가 다시 들어와서 결과를 확인할 수 있게 한다.
+        try:
+            from performance.models import Notification
+
+            owner = performance.contract.created_by
+            if owner.notification_enabled:
+                Notification.objects.create(
+                    user=owner,
+                    message=f'대응 비교 분석이 완료되었습니다: {performance.contract.project_name} 사업추진결과보고서',
+                    url=f'/performance/deliverable/{final_doc.id}/analyze/',
+                )
+        except Exception:
+            import traceback
+            print(f'[compare_pep_final_report_task] 완료 알림 생성 실패 (performance_id={performance_id}):\n{traceback.format_exc()}')
+
         return {'status': 'ok', 'performance_id': performance_id}
 
     except Exception as exc:
