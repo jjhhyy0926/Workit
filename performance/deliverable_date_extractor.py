@@ -39,10 +39,29 @@ DELIVERABLE_ALIASES = {
     ],
 }
 
-# 표 헤더 판별용 앵커 (공백/특수문자 제거 후 비교)
-HEADER_ANCHORS = ["산출물명", "제출일정"]
+# 표 헤더 판별용 앵커 (공백/특수문자 제거 후 비교). 회사 템플릿마다 열 이름이
+# 달라서("산출물명"/"제출일정" vs "산출물"/"제출시기" 등) 여러 앵커 조합을 허용한다.
+# 페이지/표에 그중 한 조합이 전부 포함되면 매칭으로 본다.
+HEADER_ANCHOR_SETS = [
+    ["산출물명", "제출일정"],
+    ["산출물", "제출시기"],
+    ["산출물", "제출일자"],
+]
+HEADER_ANCHORS = HEADER_ANCHOR_SETS[0]  # 하위 호환용 (기존 코드에서 참조하는 곳이 있을 수 있음)
 
-DATE_PATTERN = re.compile(r"\d{4}\.\s?\d{1,2}\.\s?\d{1,2}")
+# "2026. 3. 20" 형식과 "2026년 3월 20일" 형식을 모두 지원한다 (회사 템플릿마다 다름).
+DATE_PATTERN = re.compile(
+    r"(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})"
+    r"|(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일"
+)
+
+
+def _match_header_anchor_set(normalized_text: str) -> Optional[list]:
+    """normalized_text 안에 HEADER_ANCHOR_SETS 중 하나가 전부 포함되면 그 세트를 반환."""
+    for anchor_set in HEADER_ANCHOR_SETS:
+        if all(_normalize(a) in normalized_text for a in anchor_set):
+            return anchor_set
+    return None
 
 
 def _normalize(text: str) -> str:
@@ -63,11 +82,11 @@ class DeliverablePlanItem:
 
 
 def _find_output_plan_page(pdf: "pdfplumber.PDF") -> Optional[int]:
-    """'산출물계획' 표가 있는 페이지를 헤더 앵커로 탐색."""
+    """'산출물계획' 표가 있는 페이지를 헤더 앵커(여러 조합 중 하나)로 탐색."""
     for i, page in enumerate(pdf.pages):
         text = page.extract_text() or ""
         normalized = _normalize(text)
-        if all(_normalize(anchor) in normalized for anchor in HEADER_ANCHORS):
+        if _match_header_anchor_set(normalized):
             return i
     return None
 
@@ -81,11 +100,10 @@ def _extract_raw_rows(page) -> list:
     tables = page.extract_tables(table_settings)
     if not tables:
         return []
-    # 헤더("산출물명"/"제출일정")를 포함한 표를 선택
+    # 헤더 앵커 조합 중 하나를 포함한 표를 선택
     for t in tables:
         flat = " ".join(str(c) for row in t for c in row if c)
-        if all(anchor in flat.replace(" ", "") for anchor in
-               [a.replace(" ", "") for a in HEADER_ANCHORS]):
+        if _match_header_anchor_set(_normalize(flat)):
             return t
     return tables[0]
 
@@ -134,18 +152,29 @@ def parse_output_plan(pdf_path: str) -> list:
                 elif "PDF" in c or "책자" in c or "Git" in c or "Figma" in c or "CD" in c:
                     doc_form = c
                 else:
-                    # 산출물명 또는 주요내용 파편. 짧고 표의 왼쪽에 위치한
-                    # 항목이 산출물명일 확률이 높으므로 첫 파편만 채택.
                     name_frags.append(c)
 
-            candidate_name = (pending_name_frag + " " + (name_frags[0] if name_frags else "")).strip()
+            # 후보가 여러 개면(예: '구분'+'산출물'처럼 앞에 카테고리 열이 따로
+            # 있는 템플릿) 알려진 산출물명과 매칭되는 후보를 우선 채택한다.
+            # 매칭되는 게 없으면 기존처럼 첫 파편을 쓴다(원래 템플릿 - 산출물명
+            # 열이 맨 앞 - 과의 하위 호환).
+            if len(name_frags) > 1:
+                matched_frag = next(
+                    (f for f in name_frags if classify_deliverable(re.sub(r"\s+", "", f))),
+                    None,
+                )
+                chosen_frag = matched_frag if matched_frag is not None else name_frags[0]
+            else:
+                chosen_frag = name_frags[0] if name_frags else ""
+
+            candidate_name = (pending_name_frag + " " + chosen_frag).strip()
             pending_name_frag = ""
 
-            due_date = date_match.group(0).replace(" ", "")
-            due_date = re.sub(r"\.", "-", due_date)
-            # 자리수 보정 (예: 2025-3-1 -> 2025-03-01)
-            y, m, d = due_date.split("-")
-            due_date = f"{y}-{int(m):02d}-{int(d):02d}"
+            # DATE_PATTERN은 "2026. 3. 20"과 "2026년 3월 20일" 두 형식을
+            # 각각 별도 캡처 그룹으로 잡는다 - 어느 쪽이 매칭됐는지에 따라 선택.
+            g = date_match.groups()
+            y, m, d = (g[0], g[1], g[2]) if g[0] is not None else (g[3], g[4], g[5])
+            due_date = f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
 
             items.append({
                 "candidate_name": candidate_name,
