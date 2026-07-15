@@ -160,7 +160,7 @@ def analyze_document_task(self, doc_id):
                     for ref in law_refs
                 ],
                 # 새 search_jo()는 리스크 카테고리 태깅을 제공하지 않는다 —
-                # jihye_inference.build_user_content()는 비어있으면 "기타"로 처리한다.
+                # inference.build_user_content()는 비어있으면 "기타"로 처리한다.
                 'risk_names': [],
             })
 
@@ -209,7 +209,7 @@ def analyze_document_task(self, doc_id):
 
             llm_model, tokenizer = None, None
         else:
-            from jihye_inference import load_model as load_llm_model, predict
+            from inference import load_model as load_llm_model, predict
 
             llm_model, tokenizer = load_llm_model()
 

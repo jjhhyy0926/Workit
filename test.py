@@ -2,7 +2,7 @@
 import sys
 sys.path.insert(0, 'rag')
 
-from jihye_inference import load_model, predict
+from inference import load_model, predict
 
 print("모델 로딩 중... (처음엔 수분 소요)")
 model, tokenizer = load_model()

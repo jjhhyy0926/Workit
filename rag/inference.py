@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-jihye_inference.py — 계약서 조항 판정 추론 (kanana-1.5-8b-instruct + QLoRA 어댑터)
+inference.py — 계약서 조항 판정 추론 (kanana-1.5-8b-instruct + QLoRA 어댑터)
 - 베이스: kakaocorp/kanana-1.5-8b-instruct-2505  +  학습한 LoRA 어댑터 = workit_output
 - 프롬프트: 학습과 동일 포맷 (train-inference parity)
 - 입력: RAG 출력 JSON (clause_text + law_refs[law_name/article_number/chunk_text])

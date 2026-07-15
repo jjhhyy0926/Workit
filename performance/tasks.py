@@ -12,7 +12,7 @@ LLM_SERVER_URL = os.environ.get('LLM_SERVER_URL', '').strip() or None
 
 
 def _rag_path():
-    """rag/ 폴더를 import 경로에 추가한다 (로컬 CPU 폴백 시 jihye_inference를 쓰기 위해)."""
+    """rag/ 폴더를 import 경로에 추가한다 (로컬 CPU 폴백 시 inference를 쓰기 위해)."""
     import sys
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     rag_dir = os.path.join(base, 'rag')
@@ -30,7 +30,7 @@ def _get_pep_predictor():
         from remote_inference_client import remote_compare_pep
         return lambda item: remote_compare_pep(item, LLM_SERVER_URL)
     _rag_path()
-    from jihye_inference import load_model, predict_pep
+    from inference import load_model, predict_pep
     model, tokenizer = load_model()
     return lambda item: predict_pep(item, model, tokenizer)
 
@@ -41,7 +41,7 @@ def _get_rpt_predictor():
         from remote_inference_client import remote_compare_rpt
         return lambda item: remote_compare_rpt(item, LLM_SERVER_URL)
     _rag_path()
-    from jihye_inference import load_model, predict_rpt
+    from inference import load_model, predict_rpt
     model, tokenizer = load_model()
     return lambda item: predict_rpt(item, model, tokenizer)
 

@@ -1,5 +1,5 @@
 ﻿import traceback
-from rag.jihye_inference import load_model
+from rag.inference import load_model
 try:
     load_model()
     print("OK")
