@@ -333,7 +333,7 @@ function renderDetailView(data) {
               <span class="doc-name">${doc.filename}</span>
             </div>
             ${reviewed}
-            <button class="btn-file-change" style="margin-left:8px" onclick="event.stopPropagation();openFileChange('${type}','${label}')">
+            <button class="btn-file-change" style="margin-left:8px" onclick="event.stopPropagation();openFileChange('${type}','${label}',${!!doc.has_analysis})">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.79"/></svg>
               파일 변경
             </button>
@@ -464,7 +464,8 @@ function submitEditInfo() {
   });
 }
 
-function openFileChange(docType, label) {
+function openFileChange(docType, label, hasAnalysis) {
+  if (hasAnalysis && !confirm('파일을 변경하면 기존 AI 분석 결과가 삭제됩니다. 계속하시겠습니까?')) return;
   document.getElementById('fcDocType').value = docType;
   document.getElementById('fileChangeTitle').textContent = `${label} ${document.querySelector('#fcZone .upload-text') ? '변경' : '등록'}`;
   document.getElementById('fcZone').querySelector('.upload-text').textContent = '파일 선택 또는 끌어다 놓기';

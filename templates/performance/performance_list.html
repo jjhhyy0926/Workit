@@ -361,7 +361,7 @@ function renderPerfDetail(data) {
             보기
           </button>
           ${analyzeBtn}
-          <button class="btn-file-change" onclick="openFileChange(${data.id},\`${del.type}\`,\`${del.type_display}\`,true)">
+          <button class="btn-file-change" onclick="openFileChange(${data.id},\`${del.type}\`,\`${del.type_display}\`,true,${!!del.has_analysis})">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.79"/></svg>
             변경
           </button>
@@ -374,7 +374,7 @@ function renderPerfDetail(data) {
           <span class="doc-type">${del.type_display}${del.due_date ? ' · 제출 '+del.due_date : ''}${calBtn}</span>
           <span class="doc-name" style="color:#aaa">미등록</span>
         </div>
-        <button class="btn-file-change btn-file-upload" onclick="openFileChange(${data.id},\`${del.type}\`,\`${del.type_display}\`,true)">
+        <button class="btn-file-change btn-file-upload" onclick="openFileChange(${data.id},\`${del.type}\`,\`${del.type_display}\`,true,false)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           등록
         </button>
@@ -390,7 +390,8 @@ function renderPerfDetail(data) {
 
 // ── File Change ──
 let fcIsDeliverable = false;
-window.openFileChange = function(perfId, type, label, isDeliverable) {
+window.openFileChange = function(perfId, type, label, isDeliverable, hasAnalysis) {
+  if (hasAnalysis && !confirm('파일을 변경하면 기존 AI 분석 결과가 삭제됩니다. 계속하시겠습니까?')) return;
   currentPerfId = perfId;
   fcIsDeliverable = !!isDeliverable;
   document.getElementById('fcPerfId').value = perfId;

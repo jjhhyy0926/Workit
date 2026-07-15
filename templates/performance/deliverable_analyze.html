@@ -299,6 +299,7 @@ function runRfpQaAnalysis() {
 
 function switchQaTab(n) {
   if (n === COMPARE_TAB_INDEX && !COMPARISON_DATA && !COMPARE_LOADING) return;  // 아직 비교 실행 전에는 못 들어감
+  if (COMPARE_LOADING && n !== COMPARE_TAB_INDEX) return;  // 대응비교 분석 진행 중에는 다른 단계로 못 나감
   ACTIVE_QA_TAB = n;
   renderQaStep();
 }
@@ -312,12 +313,15 @@ function renderQaStep() {
 
   // 탭 버튼에는 "N단계"만 쓰고, 각 단계의 제목은 탭 내용 맨 위에 표시한다
   // (renderQaTab1Html / renderRfpQaTabHtml / renderComparisonHtml 참고).
+  // 대응비교(LLM) 분석이 진행 중일 때는 다른 단계로 못 나가게 1·2단계 탭을 잠근다 —
+  // 안 그러면 로딩 중 다른 탭으로 갔다가 대응비교 탭이 아직 disabled라 못 돌아오고
+  // 목록으로 나갔다 다시 들어와야 하는 어색한 흐름이 생긴다.
   let html = `<div class="qa-tabs">
-    <button class="qa-tab-btn ${ACTIVE_QA_TAB === 1 ? 'active' : ''}" onclick="switchQaTab(1)">1단계</button>`;
+    <button class="qa-tab-btn ${ACTIVE_QA_TAB === 1 ? 'active' : ''}" onclick="switchQaTab(1)" ${COMPARE_LOADING ? 'disabled' : ''}>1단계</button>`;
   if (HAS_RFP_QA_STEP) {
-    html += `<button class="qa-tab-btn ${ACTIVE_QA_TAB === 2 ? 'active' : ''}" onclick="switchQaTab(2)">2단계</button>`;
+    html += `<button class="qa-tab-btn ${ACTIVE_QA_TAB === 2 ? 'active' : ''}" onclick="switchQaTab(2)" ${COMPARE_LOADING ? 'disabled' : ''}>2단계</button>`;
   }
-  html += `<button class="qa-tab-btn ${ACTIVE_QA_TAB === COMPARE_TAB_INDEX ? 'active' : ''}" onclick="switchQaTab(${COMPARE_TAB_INDEX})" ${hasComparison ? '' : 'disabled'}>${COMPARE_TAB_INDEX}단계</button>`;
+  html += `<button class="qa-tab-btn ${ACTIVE_QA_TAB === COMPARE_TAB_INDEX ? 'active' : ''}" onclick="switchQaTab(${COMPARE_TAB_INDEX})" ${(hasComparison || COMPARE_LOADING) ? '' : 'disabled'}>${COMPARE_TAB_INDEX}단계</button>`;
   html += `</div>`;
 
   html += `<div style="${ACTIVE_QA_TAB === 1 ? '' : 'display:none;'}">${renderQaTab1Html()}</div>`;

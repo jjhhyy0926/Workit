@@ -111,6 +111,14 @@ def performance_detail_api(request, pk):
         'final': '사업추진결과보고서',
     }
 
+    # 유형별로 "분석 결과가 이미 있는지" 확인할 때 볼 역참조 이름 —
+    # 파일 변경 시 프론트에서 "기존 AI 분석 결과가 삭제됩니다" 경고를 띄울지 판단하는 데 씀
+    ANALYSIS_RELATED_NAME = {
+        'kickoff': 'parsed_data',
+        'tech_apply': 'tech_apply_result',
+        'final': 'final_parsed_data',
+    }
+
     existing = {d.deliverable_type: d for d in perf.deliverables.all()}
     deliverables_data = []
     for t in TYPE_ORDER:
@@ -126,6 +134,7 @@ def performance_detail_api(request, pk):
             'has_file': bool(d and d.file),
             # 분석 지원 여부 (평가기준서가 준비된 유형만 True)
             'analyzable': DELIVERABLE_CRITERIA.get(t) is not None,
+            'has_analysis': bool(d) and hasattr(d, ANALYSIS_RELATED_NAME[t]),
         })
 
     # Contract docs - 계약서·RFP·요구사항정의서 3종 (뷰어 전용)
